@@ -28,5 +28,5 @@ This script can be used to upgrade your Dremio environment using two approaches 
 | private 	| Flag to determine if the deployment should be public or private 	| No, default value is public |
 | custom_ami 	| AMI to use for Dremio coordinator 	| No, only for upgrades using a specific AMI |
 
-If you are using approach (1) then you can simply execute `python3 aws-edition-client.py upgrade true`, if you are using approach (2) then you can simply execute `python3 aws-edition-client.py upgrade false`.
+If you are using approach (1) then you can simply execute `python3 aws-edition-client.py upgrade true dremio-upgrade.conf`, if you are using approach (2) then you can simply execute `python3 aws-edition-client.py upgrade false dremio-upgrade.conf`.
 

@@ -5,7 +5,8 @@ import sys
 def upgrade(args):
     h = Helper()
     if args[2]:
-        valid = h.parse_and_validate('dremio-upgrade.conf',
+        conf_file = args[3]
+        valid = h.parse_and_validate(conf_file,
                                      ['project_id', 'cf_url', 'cf_stack_name', 'instance_type', 'key_pair_name', 'vpc_id',
                                       'subnet_id', 'region', 'whitelist', 'private'])
         if not valid:
@@ -14,7 +15,7 @@ def upgrade(args):
         host, instance_id = h.deploy_dremio(cf_stack_name, cf_url, instance_type, key_pair_name, vpc_id, subnet_id,
                                             region, whitelist, private)
     else:
-        valid = h.parse_and_validate('dremio-upgrade.conf',
+        valid = h.parse_and_validate(conf_file,
                                      ['project_id', 'instance_type', 'key_pair_name', 'vpc_id',
                                       'subnet_id', 'region', 'private', 'ami', 'iam_instance_profile_arn', 'iam_instance_profile'])
         if not valid:
