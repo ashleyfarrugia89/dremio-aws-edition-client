@@ -3,8 +3,8 @@ Dremio AWS Edition Client
 This unofficial script is for managing your AWS Edition environment. It enables administrators to deploy and upgrade their environment seemlessly without the need to interfact with the Dremio projects UI.
 
 The key features of this tool are:
-- **AWS Edition Deployment**: This will deploy a fully functional Dremio environment inside your AWS Account.
 - **AWS Edition Upgrade**: This will upgrade an existing project inside your AWS Account.
+- **AWS Edition Describe**: This will describe your AWSE Deployment.
 
 ## Pre-requisite
 Before we can use the script we will need to ensure the following:

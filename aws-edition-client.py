@@ -4,6 +4,7 @@ import sys
 
 def upgrade(args):
     h = Helper()
+    # check if cloud formation is being used
     if args[2]:
         conf_file = args[3]
         valid = h.parse_and_validate(conf_file,
@@ -15,6 +16,7 @@ def upgrade(args):
         host, instance_id = h.deploy_dremio(cf_stack_name, cf_url, instance_type, key_pair_name, vpc_id, subnet_id,
                                             region, whitelist, private)
     else:
+        conf_file = args[3]
         valid = h.parse_and_validate(conf_file,
                                      ['project_id', 'instance_type', 'key_pair_name', 'vpc_id',
                                       'subnet_id', 'region', 'private', 'ami', 'iam_instance_profile_arn', 'iam_instance_profile'])
@@ -26,6 +28,19 @@ def upgrade(args):
     h.stop_dremio_project(host, proj_id=project_id, instance=instance_id)
     time.sleep(240)  # sleep for 4 minutes
     h.open_dremio_project(host, proj_id=project_id, instance=instance_id)
+def describe(args):
+    h = Helper()
+    # check valid config
+    conf = h.parse_and_validate('aws_client.conf',['region', 'vpc_id', 'subnet_id'])
+    if conf:
+        # find coordinator node
+        #coordinator = h.find_coordinator(conf['region'], conf['access'], conf['secret'])
+        coordinator = h.find_coordinator()
+        if coordinator:
+            #discovery auth type
+            h.get_authentication_method(coordinator['InstanceId'])
+
+
 
 if __name__ == "__main__":
     # check the action
@@ -33,4 +48,6 @@ if __name__ == "__main__":
         upgrade(sys.argv)
     elif sys.argv[1] == "deploy":
         pass
+    elif sys.argv[1] == "describe":
+        describe(sys.argv)
 

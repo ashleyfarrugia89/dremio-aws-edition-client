@@ -8,11 +8,16 @@ import configparser
 ACTION_URL = "http://{0}/project/{1}/action"
 STATUS_URL = "http://{0}/aws/gateway/progress/{1}?instanceId={2}"
 AUTH_URL = "http://{0}/aws/gateway/validateId"
+GET_ENGINES = "http://{0}/aws/apiv2/provision/clusters"
 CREATE_PROJECT_URL = "http://{0}:9047/aws/gateway/projectInput?instanceId={1}"
 CREATE_CUSTOM_PROJECT_URL = "http://{0}:9047/aws/gateway/customProject/?instanceId={1}"
 CUSTOM_PROJECT_STATUS_URL = "http://{0}:9047/aws/gateway/progress/{1}?instanceId={2}"
+DREMIO_AUTH_TYPE_CMD = "awk -F'\"' '/auth.type:/ {print $2}' /opt/dremio/conf/dremio.conf"
 
 class Helper:
+    def __init__(self):
+        self.session = None
+        self.conf = None
     def parse_and_validate(self, config_file, required):
         self.conf = configparser.ConfigParser()
         self.conf.read(config_file)
@@ -22,7 +27,8 @@ class Helper:
             print("Missing mandatory parameters: {0}".format(missing))
             return False
         else:
-            return self.conf['default'].values()
+            self.conf = self.conf['default']
+            return True
     def __get(self, url):
         try:
             res = requests.request("GET", url)
@@ -55,6 +61,24 @@ class Helper:
             serial = obj.isoformat()
             return serial
         raise TypeError("Type not serializable")
+    def get_boto3_session(self):
+        if(self.session is None):
+            self.session = boto3.Session(region_name=self.conf['region'],
+                                         aws_access_key_id=self.conf['access'],
+                                         aws_secret_access_key=self.conf['secret'])
+            if self.conf['role_arn']:
+                sts_client = self.session.client('sts')
+                assumed_role_response = sts_client.assume_role(
+                    RoleArn=self.conf['role_arn'],
+                    RoleSessionName='AJF-TEST-XACCROLE'  # Give your session a descriptive name
+                )
+                self.session = boto3.Session(
+                    aws_access_key_id=assumed_role_response['Credentials']['AccessKeyId'],
+                    aws_secret_access_key=assumed_role_response['Credentials']['SecretAccessKey'],
+                    aws_session_token=assumed_role_response['Credentials']['SessionToken'],
+                    region_name=self.conf['region']
+                )
+        return self.session
     def deploy_dremio(self, stack_name, CF_URL, instance_type, key_pair_name, vpc_id, subnet_id, region, whitelist,
                       private=False):
         try:
@@ -308,3 +332,82 @@ class Helper:
                 print("Project was created successfully")
             else:
                 print("Project failed to create: {0}".format(res))
+    def search_tags(self, tags, criteria):
+        """
+            Helper function to search for a specific tag key in a list of tags.
+
+            Args:
+                tags (list): A list of tag dictionaries (e.g., [{'Key': 'Name', 'Value': 'MyInstance'}, ...]).
+                criteria (str): The tag key to search for.
+
+            Returns:
+                str: The value of the tag if found, or None if not found.
+            """
+        found = False
+        for tag in tags:
+            if tag['Key'] == criteria:
+                found = True
+        return found
+    # find coordinator
+    def find_coordinator(self):
+        """
+        Finds a Dremio coordinator instance in a given AWS region.
+
+        Args:
+            region (str): The AWS region to search in.
+
+        Returns:
+            dict: A dictionary containing the EC2 instance details of the coordinator,
+                  or None if no coordinator is found.
+        """
+        try:
+            session = self.get_boto3_session()
+            ec2 = session.client('ec2')
+
+            filters = [{
+                'Name': 'vpc-id',
+                'Values': [self.conf['vpc_id']]
+            },{
+                'Name': 'subnet-id',
+                'Values': [self.conf['subnet_id']]
+            },{
+                'Name': 'tag:dremio_managed',
+                'Values': ['true']
+            },{
+                'Name': 'instance-state-name',
+                'Values': ['running']
+            }]
+
+            response = ec2.describe_instances(Filters=filters)
+
+            for reservation in response['Reservations']:
+                for instance in reservation['Instances']:
+                    # Check if the instance does NOT have the dremio_role tag
+                    if not self.search_tags(instance['Tags'], 'dremio_role'):  # Use the helper function
+                        print("Found a Dremio coordinator node")
+                        return instance
+
+            return None  # No coordinator found
+
+        except Exception as e:
+            print(f"Error finding coordinator: {e}")
+            return None
+    def execute_command_on_ec2(self, commands, instance_id):
+        session = self.get_boto3_session()
+        client = session.client('ssm')
+        send_resp = client.send_command(
+            DocumentName="AWS-RunShellScript",  # One of AWS' preconfigured documents
+            Parameters={'commands': commands},
+            InstanceIds=[instance_id],
+        )
+        # get response
+        resp = client.get_command_invocation(
+            CommandId=send_resp['Command']['CommandId'],
+            InstanceId=send_resp['Command']['InstanceIds'][0]
+        )
+        return resp
+    def get_authentication_method(self, coordinator_id):
+        cmd = [DREMIO_AUTH_TYPE_CMD]
+        res = self.execute_command_on_ec2(cmd ,coordinator_id)
+        if res:
+            return({"auth": res['StandardOutputContent']})
