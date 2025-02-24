@@ -57,7 +57,7 @@ class Helper:
             payload = json.dumps(d)
             if auth:
                 headers = {
-                    'Authorization': 'Bearer xarxw+nBS4elSJGmN3SslCnh347+2BZFsrJHgjXq/9FJBtTsF87LTLMChbm4Pw==',
+                    'Authorization': f'Bearer {self.conf["pat"]}',
                     'Content-Type': 'application/json',
                     'Accept': 'application/json'
                 }
@@ -456,5 +456,11 @@ class Helper:
             # loop through the engines
             for cluster in res['clusterList']:
                 d.append(
-                    [cluster['name'], cluster['awsProps']['instanceType'], cluster['dynamicConfig']['containerCount'], cluster['shutdownInterval']])
+                    {
+                        "name": cluster['name'],
+                        "instanceType": cluster['awsProps']['instanceType'],
+                        "size": cluster['dynamicConfig']['containerCount'],
+                        "shutdownInterval":  cluster['shutdownInterval']
+
+                    })
         return d

@@ -49,6 +49,7 @@ def describe(args):
         # get cluster engines
         engines = h.get_engines(coordinator['PublicIpAddress'])
         d['engines'] = engines
+    print(d)
     return d
 
 
