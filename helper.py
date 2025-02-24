@@ -8,16 +8,18 @@ import configparser
 ACTION_URL = "http://{0}/project/{1}/action"
 STATUS_URL = "http://{0}/aws/gateway/progress/{1}?instanceId={2}"
 AUTH_URL = "http://{0}/aws/gateway/validateId"
-GET_ENGINES = "http://{0}/aws/apiv2/provision/clusters"
+GET_ENGINES = "http://{0}:9047/apiv2/provision/clusters"
 CREATE_PROJECT_URL = "http://{0}:9047/aws/gateway/projectInput?instanceId={1}"
 CREATE_CUSTOM_PROJECT_URL = "http://{0}:9047/aws/gateway/customProject/?instanceId={1}"
 CUSTOM_PROJECT_STATUS_URL = "http://{0}:9047/aws/gateway/progress/{1}?instanceId={2}"
 DREMIO_AUTH_TYPE_CMD = "awk -F'\"' '/auth.type:/ {print $2}' /opt/dremio/conf/dremio.conf"
 
+
 class Helper:
     def __init__(self):
         self.session = None
         self.conf = None
+
     def parse_and_validate(self, config_file, required):
         self.conf = configparser.ConfigParser()
         self.conf.read(config_file)
@@ -29,9 +31,18 @@ class Helper:
         else:
             self.conf = self.conf['default']
             return True
+
     def __get(self, url):
         try:
-            res = requests.request("GET", url)
+            if self.conf['pat']:
+                d = {
+                    'Authorization': f'Bearer {self.conf["pat"]}',
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json'
+                }
+                res = requests.request("GET", url, headers=d)
+            else:
+                res = requests.request("GET", url)
             if res.status_code == 200:
                 ret = res.json()
             else:
@@ -40,12 +51,21 @@ class Helper:
             print(e)
         else:
             return ret
-    def __post(self,url, d):
+
+    def __post(self, url, d, auth=False):
         try:
             payload = json.dumps(d)
-            headers = {
-                'Content-Type': 'application/json'
-            }
+            if auth:
+                headers = {
+                    'Authorization': 'Bearer xarxw+nBS4elSJGmN3SslCnh347+2BZFsrJHgjXq/9FJBtTsF87LTLMChbm4Pw==',
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                }
+            else:
+                headers = {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                }
             res = requests.request("POST", url, headers=headers, data=payload)
             if res.status_code == 200:
                 ret = res.json()
@@ -55,14 +75,16 @@ class Helper:
             print(e)
         else:
             return ret
-    def json_serial(self,obj):
+
+    def json_serial(self, obj):
         """JSON serializer for objects not serializable by default json code"""
         if isinstance(obj, datetime):
             serial = obj.isoformat()
             return serial
         raise TypeError("Type not serializable")
+
     def get_boto3_session(self):
-        if(self.session is None):
+        if (self.session is None):
             self.session = boto3.Session(region_name=self.conf['region'],
                                          aws_access_key_id=self.conf['access'],
                                          aws_secret_access_key=self.conf['secret'])
@@ -79,6 +101,7 @@ class Helper:
                     region_name=self.conf['region']
                 )
         return self.session
+
     def deploy_dremio(self, stack_name, CF_URL, instance_type, key_pair_name, vpc_id, subnet_id, region, whitelist,
                       private=False):
         try:
@@ -150,8 +173,9 @@ class Helper:
                 time.sleep(100)
             print("Dremio deployment is active")
             return [host, instance_id, init_url]
+
     def deploy_coordinator(self, instance_type, key_pair_name, vpc_id, subnet_id, region, whitelist,
-                                                 private, ami, iam_instance_profile_arn, iam_instance_profile):
+                           private, ami, iam_instance_profile_arn, iam_instance_profile):
         try:
             client = boto3.client('ec2', region_name=region)
             resp = client.create_instances(
@@ -192,6 +216,7 @@ class Helper:
             return False
         else:
             ret
+
     def open_dremio_project(self, host, proj_id, instance):
         url = "http://{0}/aws/gateway/project/{1}/action".format(host, proj_id)
         payload = json.dumps({
@@ -204,6 +229,7 @@ class Helper:
             return True
         else:
             return False
+
     def stop_dremio_project(self, host, proj_id, instance):
         url = "http://{0}/aws/gateway/project/{1}/action".format(host, proj_id)
         payload = json.dumps({
@@ -216,6 +242,7 @@ class Helper:
             return True
         else:
             return False
+
     def create_project(self, host, instance_id):
         url = CREATE_PROJECT_URL.format(host, instance_id)
         resp = self.__get()
@@ -223,6 +250,7 @@ class Helper:
             return resp
         else:
             return False
+
     def create_s3_bucket(bucket_name, proj_id, region):
         client = boto3.client('s3', region_name=region)
         resp = client.create_bucket(
@@ -244,6 +272,7 @@ class Helper:
                 ]
             }
         )
+
     def create_ebs(self, proj_name, proj_id, region, encrypted=False):
         client = boto3.client('ec2', region_name=region)
         resp = client.create_volume(
@@ -275,6 +304,7 @@ class Helper:
             ]
         )
         return resp['VolumeId']
+
     def create_efs(self, proj_id, region):
         client = boto3.client('efs', region_name=region)
         resp = client.create_file_system(
@@ -291,6 +321,7 @@ class Helper:
             ]
         )
         return resp['FileSystemId']
+
     def check_project_status(self, host, instance_id):
         for i in range(0, 20):
             url = CUSTOM_PROJECT_STATUS_URL.format(host, i, instance_id)
@@ -303,6 +334,7 @@ class Helper:
                         return True
                     elif last['isFinal'] == "true" and last['isSuccess'] == "false":
                         return last['error']
+
     def create_custom_project(self, host, proj_name, proj_id, instance_id, ebs_id, efs_id, bucket_name):
         res = self.create_project(host, instance_id)
         if not res:
@@ -332,6 +364,7 @@ class Helper:
                 print("Project was created successfully")
             else:
                 print("Project failed to create: {0}".format(res))
+
     def search_tags(self, tags, criteria):
         """
             Helper function to search for a specific tag key in a list of tags.
@@ -348,6 +381,7 @@ class Helper:
             if tag['Key'] == criteria:
                 found = True
         return found
+
     # find coordinator
     def find_coordinator(self):
         """
@@ -367,13 +401,13 @@ class Helper:
             filters = [{
                 'Name': 'vpc-id',
                 'Values': [self.conf['vpc_id']]
-            },{
+            }, {
                 'Name': 'subnet-id',
                 'Values': [self.conf['subnet_id']]
-            },{
+            }, {
                 'Name': 'tag:dremio_managed',
                 'Values': ['true']
-            },{
+            }, {
                 'Name': 'instance-state-name',
                 'Values': ['running']
             }]
@@ -392,6 +426,7 @@ class Helper:
         except Exception as e:
             print(f"Error finding coordinator: {e}")
             return None
+
     def execute_command_on_ec2(self, commands, instance_id):
         session = self.get_boto3_session()
         client = session.client('ssm')
@@ -400,14 +435,26 @@ class Helper:
             Parameters={'commands': commands},
             InstanceIds=[instance_id],
         )
+        time.sleep(1)
         # get response
         resp = client.get_command_invocation(
             CommandId=send_resp['Command']['CommandId'],
             InstanceId=send_resp['Command']['InstanceIds'][0]
         )
         return resp
+
     def get_authentication_method(self, coordinator_id):
         cmd = [DREMIO_AUTH_TYPE_CMD]
-        res = self.execute_command_on_ec2(cmd ,coordinator_id)
+        res = self.execute_command_on_ec2(cmd, coordinator_id)
         if res:
-            return({"auth": res['StandardOutputContent']})
+            return res['StandardOutputContent'].replace("\n", "")
+
+    def get_engines(self, coordinator):
+        d = []
+        res = self.__get(GET_ENGINES.format(coordinator))
+        if res:
+            # loop through the engines
+            for cluster in res['clusterList']:
+                d.append(
+                    [cluster['name'], cluster['awsProps']['instanceType'], cluster['dynamicConfig']['containerCount'], cluster['shutdownInterval']])
+        return d
