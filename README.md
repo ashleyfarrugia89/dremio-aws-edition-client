@@ -35,7 +35,12 @@ This script can be used to upgrade your Dremio environment using two approaches 
 
 Example commands would be:
 
- `python3 aws-edition-client.py upgrade true dremio-upgrade.conf`
- `python3 aws-edition-client.py upgrade false dremio-upgrade.conf`
+Upgrade with Cloudformation \
+ `python3 aws-edition-client.py upgrade true dremio-upgrade.conf`\
+\
+Upgrade with AMI \
+ `python3 aws-edition-client.py upgrade false dremio-upgrade.conf`\
+\
+Describe the Environment\
  `python3 aws-edition-client.py describe`
 
